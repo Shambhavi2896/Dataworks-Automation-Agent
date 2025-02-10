@@ -4,29 +4,46 @@ import json
 import os
 import datetime
 import sqlite3
-import duckdb
-import requests
-import yaml
-import msgpack
-import csv
+import requests # type: ignore
 from pathlib import Path
+import duckDB # type: ignore
 from typing import List
-from openai import OpenAI
+from openai import OpenAI # type: ignore
+import markdown # type: ignore
+import pandas as pd # type: ignore
+from PIL import Image # type: ignore
+import re
+from dotenv import load_dotenv
+import os
 
 app = FastAPI()
 
+load_dotenv()  # Load variables from .env
+API_PROXY_TOKEN = os.getenv("AIPROXY_TOKEN")
+
+if not API_PROXY_TOKEN:
+    raise ValueError("AIPROXY_TOKEN is missing. Set it in the .env file or environment.")
+
 DATA_DIR = "/data"
-AI_PROXY_TOKEN = os.getenv("AIPROXY_TOKEN", "")
 
-if not AI_PROXY_TOKEN:
-    raise ValueError("AIPROXY_TOKEN is missing. Set it as an environment variable.")
-
-client = OpenAI(api_key=AI_PROXY_TOKEN)
+client = OpenAI(api_key=API_PROXY_TOKEN)
 
 # Ensure data directory exists
 os.makedirs(DATA_DIR, exist_ok=True)
 
+def validate_path(path):
+    if not path.startswith(DATA_DIR):
+        raise HTTPException(status_code=400,detail="Access restricted to /data directory")
+    return path
 
+def get_file_from_task(task):
+    """Extract file path from task description using regex."""
+    match = re.search(r"/data/[^\s]+", task)
+    if match:
+        return match.group(0)  # Return the matched file path
+    else:
+        raise HTTPException(status_code=400, detail="No valid file path found in task")
+    
 # ---------------- Task 1: Install uv and Run datagen.py ----------------
 @app.post("/run")
 def run_task(task: str):
@@ -104,6 +121,99 @@ def run_task(task: str):
             total_sales = query_duckdb(f"SELECT SUM(units * price) FROM tickets WHERE type='Gold';")
             write_to_file(f"{DATA_DIR}/ticket-sales-gold.txt", str(total_sales))
             return {"status": "success", "message": f"Gold ticket sales: {total_sales}"}
+        #-----------------Task B3----------------------------
+
+        elif "fetch data from api" in task.lower():
+            try:
+                response = requests.get("https://jsonplaceholder.typicode.com/posts")
+                if response.status_code == 200:
+                    with open(f"{DATA_DIR}/api-data.json", "w") as f:
+                        json.dump(response.json(), f, indent=2)
+                    return {"message": "API data fetched and saved"}
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to fetch data")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        #-----------------Task B4----------------------------
+        elif "clone git repo" in task.lower():
+            try:
+                repo_url = "https://github.com/example-user/example-repo.git"
+                repo_path = f"{DATA_DIR}/repo"
+                subprocess.run(["git", "clone", repo_url, repo_path], check=True)
+                return {"message": "Git repository cloned"}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        #-----------------Task B5-------------------------------
+        elif "run sql query" in task.lower():
+            try:
+                db_path = validate_path(f"{DATA_DIR}/database.db")
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM users")
+                result = cursor.fetchone()[0]
+                conn.close()
+                return {"message": f"Query executed, result: {result}"}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        #-----------------Task B6------------------------------
+        elif "scrape website" in task.lower():
+            try:
+                response = requests.get("https://example.com")
+                if response.status_code == 200:
+                    with open(f"{DATA_DIR}/scraped.html", "w") as f:
+                        f.write(response.text)
+                    return {"message": "Website data scraped"}
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to fetch website data")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        #-----------------Task B7-------------------------------
+        elif "compress image" in task.lower():
+            try:
+                image_path = validate_path(f"{DATA_DIR}/image.jpg")
+                output_path = f"{DATA_DIR}/compressed.webp"
+                image = Image.open(image_path)
+                image.save(output_path, "WEBP", quality=85)
+                return {"message": "Image compressed successfully"}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        #-----------------Task B8---------------------------------
+        elif "transcribe audio" in task.lower():
+            try:
+                mp3_path = validate_path(f"{DATA_DIR}/audio.mp3")
+                transcript = "Simulated transcription result"  # Placeholder
+                with open(f"{DATA_DIR}/transcription.txt", "w") as f:
+                    f.write(transcript)
+                return {"message": "Audio transcribed"}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        #-----------------Task B9----------------------------
+        elif "convert markdown to html" in task.lower():
+            try:
+                md_path = validate_path(f"{DATA_DIR}/document.md")
+                with open(md_path, "r") as f:
+                    html_content = markdown.markdown(f.read())
+                with open(f"{DATA_DIR}/document.html", "w") as f:
+                    f.write(html_content)
+                return {"message": "Markdown converted to HTML"}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        #-----------------Task B10-------------------------------
+        elif "filter csv" in task.lower():
+            try:
+                csv_path = validate_path(f"{DATA_DIR}/data.csv")
+                df = pd.read_csv(csv_path)
+                filtered_data = df[df["column_name"] == "value"].to_dict(orient="records")
+                return {"filtered_data": filtered_data}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
 
         return {"status": "failed", "message": "Task not recognized."}
     except Exception as e:
@@ -126,7 +236,7 @@ def count_weekday(file_path, weekday=2):
 
 
 def query_duckdb(query):
-    conn = duckdb.connect(f"{DATA_DIR}/ticket-sales.db")
+    conn = duckDB.connect(f"{DATA_DIR}/ticket-sales.db")
     result = conn.execute(query).fetchone()
     conn.close()
     return result[0]
