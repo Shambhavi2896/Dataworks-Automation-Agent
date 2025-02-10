@@ -6,7 +6,7 @@ import datetime
 import sqlite3
 import requests # type: ignore
 from pathlib import Path
-import duckDB # type: ignore
+import duckdb # type: ignore
 from typing import List
 from openai import OpenAI # type: ignore
 import markdown # type: ignore
@@ -236,7 +236,7 @@ def count_weekday(file_path, weekday=2):
 
 
 def query_duckdb(query):
-    conn = duckDB.connect(f"{DATA_DIR}/ticket-sales.db")
+    conn = duckdb.connect(f"{DATA_DIR}/ticket-sales.db")
     result = conn.execute(query).fetchone()
     conn.close()
     return result[0]
