@@ -26,7 +26,6 @@ from PIL import Image
 from io import BytesIO
 import easyocr # type: ignore
 from git import Repo # type: ignore
-import shutil
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = FastAPI()
